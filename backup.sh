@@ -1,53 +1,118 @@
 #!/bin/bash
 
+# A configuration wrapper around restic
+
+
 set -euf -o pipefail
 
-source /etc/backblaze.sh
+test -t 1
+INTERACTIVE=$?
 
 HOSTNAME=$(hostname -f)
-INCLUDES=${HOME}/.restic-files.txt
-EXCLUDES=${HOME}/.restic-excludes.txt
-
-if ! test -f ${INCLUDES}; then
-    if test 0 -eq $UID; then
-        INCLUDES=/etc/restic-files.txt
-        EXCLUDES=/etc/restic-excludes.txt
-    fi
-fi
-
-INTERACTIVE=false
-test -t 1 && INTERACTIVE=true
 
 
-TAGS="manual"
-case $INTERACTIVE in
-    false) TAGS="auto"
-    ;;
-esac
+fail () {
+    err=$1; shift;
+    echo "${@}" >&2
+    exit $err
+}
 
-for i; do
-case $i in
-backup)
-    test -r ${INCLUDES} && \
-        restic backup \
-            --exclude-caches=true \
-            --exclude-file=${EXCLUDES} \
-            --files-from=${INCLUDES} \
-            --host=${HOSTNAME} \
-            --tag=${TAGS}
-    ;;
-clean)
+read_excludes () {
+    grep -oE '^exclude\s+([^#]*)$' ${@} | cut -d ' ' -f 2-
+}
 
-    restic forget -c --prune \
-        --keep-daily=7 \
-        --keep-weekly=3 \
-        --keep-monthly=3 \
-        --keep-hourly=12 \
+read_includes () {
+    grep -oE '^include\s+([^#]*)$' ${@} | cut -d ' ' -f 2-
+}
+
+init_profile () {
+    local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+    restic init -r ${repository:-${RESTIC_REPOSITORY}}
+}
+
+run_profile () {
+    test -f "${RESTIC_PASSWORD_FILE}" || fail 2 "Required environment variable: RESTIC_PASSWORD_FILE"
+    test -z "${RESTIC_REPOSITORY}" && fail 3 "Required environment variable: RESTIC_REPOSITORY"
+
+    local include_file=$(mktemp /tmp/restic.include.XXXXXX)
+    local exclude_file=$(mktemp /tmp/restic.exclude.XXXXXX)
+    local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+    local maxsize=$(grep -oE '^maxsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
+    local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+
+    grep -v '^#' $1 | envsubst | read_includes > ${include_file}
+    grep -v '^#' $1 | envsubst | read_excludes > ${exclude_file}
+
+    restic backup \
+        --repo=${repository:-${RESTIC_REPOSITORY}} \
+        --exclude-caches=true \
+        --exclude-larger-than=${maxsize:-8G} \
+        --files-from=${include_file} \
+        --exclude-file=${exclude_file} \
         --host=${HOSTNAME} \
-        --tag=$TAGS
+        --tag=${name:-$1} \
+        --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
 
-    ;;
-esac
-done
+
+    result=$?
+
+    rm ${include_file} ${exclude_file}
+
+    return $result
+}
+
+clean_profile () {
+    local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+    local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ' )
+    local hourly=$(grep '^hourly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
+    local daily=$(grep '^daily\s+(\d+).*$' $1 | cut -f 2 -d ' ')
+    local weekly=$(grep '^weekly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
+    local monthly=$(grep '^monthly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
+    local yearly=$(grep '^yearly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
+
+    restic forget --prune \
+        --repo=${repository:-${RESTIC_REPOSITORY}} \
+        --keep-daily=${daily:-7} \
+        --keep-weekly=${weekly:-4} \
+        --keep-monthly=${monthly:-6} \
+        --keep-yearly=${yearly:-3} \
+        --host=${HOSTNAME} \
+        --tag=${name:-$1}
+}
+
+main () {
+    local verb=$1; shift;
+
+    local profile="${HOME}/.restic.profile.txt";
+
+    while getopts ":p:" OPT; do
+        case $OPT in
+            p) profile="${OPTARG}";;
+        esac
+    done
+
+
+    case $verb in
+        init)
+            test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            init_profile ${profile};
+            ;;
+        backup)
+            test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            run_profile ${profile};
+            ;;
+        clean)
+            test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            clean_profile ${profile};
+            ;;
+        size)
+            test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            grep -v '^#' ${profile} | envsubst | read_includes | xargs du -shc;
+            ;;
+    esac
+
+}
+
+main "${@}"
 
 
