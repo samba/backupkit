@@ -30,35 +30,30 @@ init_profile () {
     restic init -r ${repository:-${RESTIC_REPOSITORY}}
 }
 
+list_snapshots () {
+    local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+    restic snapshots -r ${repository:-${RESTIC_REPOSITORY}}
+}
+
 run_profile () {
     test -f "${RESTIC_PASSWORD_FILE}" || fail 2 "Required environment variable: RESTIC_PASSWORD_FILE"
     test -z "${RESTIC_REPOSITORY}" && fail 3 "Required environment variable: RESTIC_REPOSITORY"
 
-    local include_file=$(mktemp /tmp/restic.include.XXXXXX)
-    local exclude_file=$(mktemp /tmp/restic.exclude.XXXXXX)
     local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
     local maxsize=$(grep -oE '^maxsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
     local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
 
-    grep -v '^#' $1 | envsubst | read_includes > ${include_file}
-    grep -v '^#' $1 | envsubst | read_excludes > ${exclude_file}
 
     restic backup \
         --repo=${repository:-${RESTIC_REPOSITORY}} \
         --exclude-caches=true \
         --exclude-larger-than=${maxsize:-8G} \
-        --files-from=${include_file} \
-        --exclude-file=${exclude_file} \
+        --files-from=<(cat $1 | envsubst | read_includes) \
+        --exclude-file=<(cat $1 | envsubst | read_excludes) \
         --host=${HOSTNAME} \
         --tag=${name:-$1} \
         --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
 
-
-    result=$?
-
-    rm ${include_file} ${exclude_file}
-
-    return $result
 }
 
 clean_profile () {
@@ -104,6 +99,9 @@ main () {
         clean)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
             clean_profile ${profile};
+            ;;
+        snapshots)
+            list_snapshots ${profile};
             ;;
         size)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
