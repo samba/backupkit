@@ -1,0 +1,20 @@
+# A restic profile
+
+profile media
+repository /mnt/backup
+
+
+daily 10
+weekly 3
+monthly 3
+yearly 0
+
+include /srv/media/
+
+
+exclude **/cache/*
+exclude **/Go/pkg/*
+exclude **/Go/**/cache
+
+
+

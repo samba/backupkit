@@ -10,13 +10,51 @@ INTERACTIVE=$?
 
 HOSTNAME=$(hostname -f)
 
+print_help () {
+cat <<EOF
+Usage:  $0 [verb] -p <profile>
+
+This is a convenience wrapper around restic.
+It respects the restic environment variables.
+You'll probably want to use RESTIC_PASSWORD_FILE to point to your password file.
+If you do not specify a profile, it defaults to <${HOME}/.restic.profile.txt>.
+
+A verb must be one of:
+- init        prepares a repository for restic backups (don't do this twice)
+- backup      performs a backup snapshot process into the repository
+- clean       removes outdated snapshots from the repository
+- snapshots   lists all snapshots in the repository
+- size        calculates the size of live source directories (not accounting for excludes)
+
+A profile is a text file of the following format:
+
+   profile    <name>
+   repository <path>
+
+   # retention parameters
+   hourly     <count>
+   daily      <count>
+   weekly     <count>
+   monthly    <count>
+   yearly     <count>
+
+   # source data
+   maxsize      12G  # excludes files larger than this
+   include    \${HOME}/Documents/
+   include    \${Home}/Pictures/
+   exclude    **/cache/
+   exclude    **/*.bak
+
+
+EOF
+}
+
 
 fail () {
     err=$1; shift;
     echo "${@}" >&2
     exit $err
 }
-
 read_excludes () {
     grep -oE '^exclude\s+([^#]*)$' ${@} | cut -d ' ' -f 2-
 }
@@ -101,11 +139,15 @@ main () {
             clean_profile ${profile};
             ;;
         snapshots)
+            test -r ${profile} || fail 1 "Invalid profile: ${profile}";
             list_snapshots ${profile};
             ;;
         size)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
             grep -v '^#' ${profile} | envsubst | read_includes | xargs du -shc;
+            ;;
+        *)
+            print_help
             ;;
     esac
 

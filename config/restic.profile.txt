@@ -1,0 +1,24 @@
+# A restic profile
+
+profile personal
+repository /mnt/backup
+maxsize 8G
+
+
+daily 10
+weekly 3
+monthly 3
+yearly 0
+
+
+include ${HOME}/Projects
+include ${HOME}/Music
+include ${HOME}/Videos
+include ${HOME}/Pictures
+
+exclude **/cache/*
+exclude **/Go/pkg/*
+exclude **/Go/**/cache
+
+
+
