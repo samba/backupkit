@@ -10,13 +10,14 @@ INTERACTIVE=$?
 
 HOSTNAME=$(hostname -f)
 
+export RESTIC_PASSWORD_FILE=${RESTIC_PASSWORD_FILE:-${HOME}/.restic_password}
+
 print_help () {
 cat <<EOF
 Usage:  $0 [verb] -p <profile>
 
 This is a convenience wrapper around restic.
 It respects the restic environment variables.
-You'll probably want to use RESTIC_PASSWORD_FILE to point to your password file.
 If you do not specify a profile, it defaults to <${HOME}/.restic.profile.txt>.
 
 A verb must be one of:
@@ -45,6 +46,8 @@ A profile is a text file of the following format:
    exclude    **/cache/
    exclude    **/*.bak
 
+Environment:
+   RESTIC_PASSWORD_FILE defaults to ${HOME}/.restic_password
 
 EOF
 }
@@ -74,13 +77,13 @@ list_snapshots () {
 }
 
 run_profile () {
-    test -f "${RESTIC_PASSWORD_FILE}" || fail 2 "Required environment variable: RESTIC_PASSWORD_FILE"
-    test -z "${RESTIC_REPOSITORY}" && fail 3 "Required environment variable: RESTIC_REPOSITORY"
 
     local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
     local maxsize=$(grep -oE '^maxsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
     local repository=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
 
+    test -z "${repository:-${RESTIC_REPOSITORY}}" && fail 3 "Required environment variable: RESTIC_REPOSITORY"
+    test -f "${RESTIC_PASSWORD_FILE}" || fail 2 "Required environment variable: RESTIC_PASSWORD_FILE"
 
     restic backup \
         --repo=${repository:-${RESTIC_REPOSITORY}} \
@@ -147,7 +150,7 @@ main () {
             grep -v '^#' ${profile} | envsubst | read_includes | xargs du -shc;
             ;;
         *)
-            print_help
+            print_help;
             ;;
     esac
 
