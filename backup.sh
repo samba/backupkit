@@ -76,6 +76,10 @@ list_snapshots () {
     restic snapshots -r ${repository:-${RESTIC_REPOSITORY}}
 }
 
+get_exports () {
+    grep -oE '^export\s+([^#]*)' $1
+}
+
 run_profile () {
 
     local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
@@ -131,18 +135,22 @@ main () {
     case $verb in
         init)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            eval "$(get_exports ${profile})";
             init_profile ${profile};
             ;;
         backup)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            eval "$(get_exports ${profile})";
             run_profile ${profile};
             ;;
         clean)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            eval "$(get_exports ${profile})";
             clean_profile ${profile};
             ;;
         snapshots)
             test -r ${profile} || fail 1 "Invalid profile: ${profile}";
+            eval "$(get_exports ${profile})";
             list_snapshots ${profile};
             ;;
         size)

@@ -32,7 +32,10 @@ A profile is a text file with a few directives to instruct the behavior of resti
 
 ```
 profile    <name>  # IMPORTANT: snapshots will be filtered on this
-repository <path>  # Can be any repository restic supports (AWS S3, Backblaze B2, local path)
+repository <path>  # Can be any repository restic supports (AWS S3, Backblaze B2, local path) - not quoted.
+
+# bash-style exports are interpreted as inputs to restic environment.
+export MY_REMOTE_KEY=abcde12345
 
 # retention parameters -- how many of each to retain
 hourly     <count>
