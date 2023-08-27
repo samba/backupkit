@@ -5,10 +5,15 @@
 
 set -euf -o pipefail
 
-test -t 1
-INTERACTIVE=$?
+if test -t 1; then
+    INTERACTIVE=0
+else
+    INTERACTIVE=1
+fi
+
 
 HOSTNAME=$(hostname -f)
+LOCKFILE=/tmp/restic.backup.lock
 
 export RESTIC_PASSWORD_FILE=${RESTIC_PASSWORD_FILE:-${HOME}/.restic_password}
 
@@ -31,6 +36,14 @@ A profile is a text file of the following format:
 
    profile    <name>
    repository <path>
+
+   # example
+   # repository b2:bucketname:backup/path/
+
+   # optional environment overrides
+   export B2_ACCOUNT_ID=...
+   export B2_ACCOUNT_KEY=...
+   export RESTIC_PASSWORD_FILE=/path/to/passfile
 
    # retention parameters
    hourly     <count>
@@ -58,6 +71,7 @@ fail () {
     echo "${@}" >&2
     exit $err
 }
+
 read_excludes () {
     grep -oE '^exclude\s+([^#]*)$' ${@} | cut -d ' ' -f 2-
 }
@@ -80,6 +94,14 @@ get_exports () {
     grep -oE '^export\s+([^#]*)' $1
 }
 
+get_lock () {
+    test ! -f ${LOCKFILE} && echo $1 > ${LOCKFILE}
+}
+
+release_lock () {
+    test -f ${LOCKFILE} && test $1 -eq $(head -n 1 ${LOCKFILE}) && rm -v ${LOCKFILE}
+}
+
 run_profile () {
 
     local name=$(grep -oE '^profile\s+([^#]*)$' $1 | cut -f 2- -d ' ')
@@ -88,6 +110,8 @@ run_profile () {
 
     test -z "${repository:-${RESTIC_REPOSITORY}}" && fail 3 "Required environment variable: RESTIC_REPOSITORY"
     test -f "${RESTIC_PASSWORD_FILE}" || fail 2 "Required environment variable: RESTIC_PASSWORD_FILE"
+
+    get_lock $$ || return 1
 
     restic backup \
         --repo=${repository:-${RESTIC_REPOSITORY}} \
@@ -98,6 +122,8 @@ run_profile () {
         --host=${HOSTNAME} \
         --tag=${name:-$1} \
         --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
+
+    release_lock $$
 
 }
 
@@ -110,6 +136,8 @@ clean_profile () {
     local monthly=$(grep '^monthly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
     local yearly=$(grep '^yearly\s+(\d+).*$' $1 | cut -f 2 -d ' ')
 
+    get_lock $$ || return 1
+
     restic forget --prune \
         --repo=${repository:-${RESTIC_REPOSITORY}} \
         --keep-daily=${daily:-7} \
@@ -118,6 +146,10 @@ clean_profile () {
         --keep-yearly=${yearly:-3} \
         --host=${HOSTNAME} \
         --tag=${name:-$1}
+
+    restic cache --cleanup
+
+    release_lock $$
 }
 
 main () {
@@ -130,6 +162,8 @@ main () {
             p) profile="${OPTARG}";;
         esac
     done
+
+    command -v restic || fail 2 "Could not find restic backup program."
 
 
     case $verb in

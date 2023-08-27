@@ -47,8 +47,8 @@ yearly     <count>
 # source data
 # multiple includes and excludes are allowed
 maxsize    12G  # excludes files larger than this
-include    \${HOME}/Documents/
-include    \${Home}/Pictures/
+include    ${HOME}/Documents/
+include    ${HOME}/Pictures/
 exclude    **/cache/
 exclude    **/*.bak
 
