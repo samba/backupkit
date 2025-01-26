@@ -1,34 +1,40 @@
 # A [Restic][1] Backup Script
 
-Some convenience bits for my own usage.
+A convenience wrapper for Restic.
 
 * Allows multiple repositories to be configured with distinct sources, retention patterns, and exclusions
 * Configuration is human readable
 * Relies strictly on shell script and common utilities (grep, cut, envsubst)
 
-
+Assumes that both `restic` and `rclone` should be available (2025-01-25).
 
 ## Installation
 
 * Copy this script into your `$PATH` somewhere. `/usr/local/bin/` is usually sensible.
-* Define a backup profile like below.
-* Install backup jobs in your crontab like below.
+* Define a backup profile like below: see `backup.sh genconf` for easy preparation.
+* Configure backup jobs in your crontab like below.
+
+### Usage
+
+Please read the command-line help for overview, or the code in [backup.sh](./backup.sh).
+
+Please review [the blog](./blog/2025-01-25-opendrive-restic-rclone.md) for setting up your rclone repository with restic.
 
 ### Cron jobs
 
 ```
 # Backup jobs every 6 hours
-10 */6 * * * bash ${HOME}/.bin/backup.sh backup -p /mnt/backup/config/restic.media.txt && df -h /mnt/backup/
-30 */6 * * * bash ${HOME}/.bin/backup.sh backup -p /mnt/backup/config/restic.profile.txt && df -h /mnt/backup/
+10 */6 * * * bash path/to/backup.sh backup restic.media.txt
 
 # Nightly cleanup jobs (retention is enforced here)
-10 2 * * *   bash ${HOME}/.bin/backup.sh clean -p /mnt/backup/config/restic.media.txt && df -h /mnt/backup/
-30 2 * * *   bash ${HOME}/.bin/backup.sh clean -p /mnt/backup/config/restic.profile.txt && df -h /mnt/backup/
+10 2 * * *   bash path/to/backup.sh clean restic.media.txt
 ```
 
 ## Profiles
 
 A profile is a text file with a few directives to instruct the behavior of restic.
+
+Note that **all keywords are required** (except for `export`) as of update 2025-01-25.
 
 ```
 profile    <name>  # IMPORTANT: snapshots will be filtered on this
