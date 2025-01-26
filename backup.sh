@@ -93,18 +93,23 @@ cmd_backup () {
     local maxsize=$(grep -oE '^maxsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
     local packsize=$(grep -oE '^packsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
 
+    export  RCLONE_OPENDRIVE_CHUNK_SIZE=256Mi
+
+
     restic backup \
         --repo=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ') \
         --exclude-caches=true \
         --exclude-larger-than=${maxsize:-8G} \
         --pack-size=${packsize:-128} \
+        --limit-upload=$((1024*100)) \
         --files-from=<(cat $1 | envsubst | read_includes) \
         --exclude-file=<(cat $1 | envsubst | read_excludes) \
-        --group-by hosts,paths,tags \
         --host=$(hostname) \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' |  cut -f 2- -d ' ')" \
         --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
 
+    # not yet supported in Debian (rclone 1.60)    
+    # --group-by hosts,paths,tags \
 
 }
 
@@ -129,9 +134,14 @@ cmd_clean () {
 
 cmd_snapshots ()  {
     restic snapshots -r $(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ') \
-        --group-by hosts,paths,tags \
         --host=$(hostname) \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' | cut -f 2- -d ' ')"
+
+    # not yet supported in Debian (rclone 1.60)    
+    # --group-by hosts,paths,tags \
+
+
+
 }
 
 cmd_size ()  {
