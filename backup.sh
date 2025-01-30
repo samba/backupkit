@@ -2,15 +2,26 @@
 
 set -euf -o pipefail
 
+# NB: these options impact reliability and performance
+# OpenDrive errors frequently with "incorrect chunk size" if restic pack size is too small, and rclone's chunk size is also.
+# Maximum pack size for restic is 128, so OpenDrive chunks of 256 (max) is plenty of room to spare.
+# This arrangement is optimal for many larger files, not smaller files.
+# Setting rclone's bandwidth limit obviously adjusts for speed...
+# The restic config can also enforce bandwidth limits from the restic side.
+export RCLONE_BWLIMIT=${RCLONE_BWLIMIT:-100M}
+export RCLONE_OPENDRIVE_CHUNK_SIZE=${RCLONE_OPENDRIVE_CHUNK_SIZE:-256Mi}
+
+
+INTERACTIVE=1
+test -t 1 && INTERACTIVE=0
+
+
 fail () {
     err=$1; shift;
     echo "${@}" >&2
     exit $err
 }
 
-
-INTERACTIVE=1
-test -t 1 && INTERACTIVE=0
 
 print_help () {
 cat <<EOF
@@ -63,6 +74,8 @@ repository <path>
 # export B2_ACCOUNT_ID=...
 # export B2_ACCOUNT_KEY=...
 # export RESTIC_PASSWORD_FILE=/path/to/passfile
+# export UPLOAD_THROTTLE=0  ## in megabytes/second
+
 
 # retention parameters
 hourly     10
@@ -93,17 +106,17 @@ cmd_backup () {
     local maxsize=$(grep -oE '^maxsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
     local packsize=$(grep -oE '^packsize\s+([^#]*)$' $1 | cut -f 2 -d ' ')
 
-    export  RCLONE_OPENDRIVE_CHUNK_SIZE=256Mi
 
+    export RESTIC_UPLOAD_LIMIT=$((1024*${UPLOAD_THROTTLE:-0}))
 
     restic backup \
         --repo=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ') \
         --exclude-caches=true \
         --exclude-larger-than=${maxsize:-8G} \
         --pack-size=${packsize:-128} \
-        --limit-upload=$((1024*100)) \
         --files-from=<(cat $1 | envsubst | read_includes) \
         --exclude-file=<(cat $1 | envsubst | read_excludes) \
+        --limit-upload=${RESTIC_UPLOAD_LIMIT} \
         --host=$(hostname) \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' |  cut -f 2- -d ' ')" \
         --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
@@ -151,6 +164,7 @@ cmd_size ()  {
 main () {
     command -v restic >/dev/null || fail 2 "Dependency missing: restic"
     command -v rclone >/dev/null || fail 2 "Dependency missing: rclone"
+
 
     case "$1" in
         genconf) gen_config "${2:-UNNAMED_PROFILE}"; return 0 ;;
