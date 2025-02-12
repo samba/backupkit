@@ -74,8 +74,12 @@ repository <path>
 # export B2_ACCOUNT_ID=...
 # export B2_ACCOUNT_KEY=...
 # export RESTIC_PASSWORD_FILE=/path/to/passfile
-# export UPLOAD_THROTTLE=0  ## in megabytes/second
+# export RCLONE_BIND=eth0     ## select specific interface
+# export RCLONE_BWLIMIT=100M  ## (rclone) throttle [units M, G, T, etc in bytes]
+# export UPLOAD_THROTTLE=0    ## (restic) throttle in megabytes/second
 
+# ignore certain metadata when scanning files (maybe faster)
+ignore ctime inode
 
 # retention parameters
 hourly     10
@@ -109,6 +113,10 @@ cmd_backup () {
 
     export RESTIC_UPLOAD_LIMIT=$((1024*${UPLOAD_THROTTLE:-0}))
 
+
+    local IGNOREOPTS=$(grep -oE '^ignore\s+([^#]*)$' $1 | tr -s ' ' | cut -f 2- -d ' ' | sed -E 's/\w+/--ignore-\0/g')
+
+
     restic backup \
         --repo=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ') \
         --exclude-caches=true \
@@ -118,10 +126,11 @@ cmd_backup () {
         --exclude-file=<(cat $1 | envsubst | read_excludes) \
         --limit-upload=${RESTIC_UPLOAD_LIMIT} \
         --host=$(hostname) \
+        ${IGNOREOPTS} \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' |  cut -f 2- -d ' ')" \
         --tag=$(test 0 -eq $INTERACTIVE && echo 'interactive' || echo 'automatic')
 
-    # not yet supported in Debian (rclone 1.60)    
+    # not yet supported in Debian (rclone 1.60)
     # --group-by hosts,paths,tags \
 
 }
@@ -132,13 +141,21 @@ cmd_init () {
 }
 
 cmd_clean () {
+
+    local hourly=$(grep -E '^hourly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ')
+    local daily=$(grep -E '^dailly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ')
+    local weekly=$(grep -E '^weekly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ')
+    local monthly=$(grep -E '^monthlyly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ')
+    local yearly=$(grep -E '^yearly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ')
+
+
     restic forget --prune \
         --repo=$(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ') \
-        --keep-hourly=$(grep -E '^hourly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ') \
-        --keep-daily=$(grep -E '^daily\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ') \
-        --keep-weekly=$(grep -E '^weekly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ') \
-        --keep-monthly=$(grep -E '^monthly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ') \
-        --keep-yearly=$(grep -E '^yearly\s+([0-9]+).*$' $1 | tr -s ' ' | cut -f 2 -d ' ') \
+        --keep-hourly=${hourly:-6} \
+        --keep-daily=${daily:-6} \
+        --keep-weekly=${weekly:-4} \
+        --keep-monthly=${monthly:-3} \
+        --keep-yearly=${yearly:-2} \
         --host=$(hostname) \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' | cut -f 2- -d ' ')"
 
@@ -150,7 +167,7 @@ cmd_snapshots ()  {
         --host=$(hostname) \
         --tag="$(grep -oE '^profile\s+([^#]*)$' $1 | tr -s ' ' | cut -f 2- -d ' ')"
 
-    # not yet supported in Debian (rclone 1.60)    
+    # not yet supported in Debian (rclone 1.60)
     # --group-by hosts,paths,tags \
 
 
