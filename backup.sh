@@ -12,6 +12,9 @@ export RCLONE_BWLIMIT=${RCLONE_BWLIMIT:-100M}
 export RCLONE_OPENDRIVE_CHUNK_SIZE=${RCLONE_OPENDRIVE_CHUNK_SIZE:-256Mi}
 
 
+export COUNT_CPUS=$(lscpu --parse=CPU | grep -v '#' | wc -l)
+export GOMAXPROCS=$((COUNT_CPUS / 2))
+
 INTERACTIVE=1
 test -t 1 && INTERACTIVE=0
 
