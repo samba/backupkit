@@ -177,6 +177,12 @@ cmd_snapshots ()  {
 
 }
 
+
+cmd_passthrough ()  {
+    restic "${2:-INVALID}" -r $(grep -oE '^repository\s+([^#]*)$' $1 | cut -f 2- -d ' ')
+}
+
+
 cmd_size ()  {
     envsubst < $1 | read_includes | xargs du -shc
 }
@@ -202,11 +208,12 @@ main () {
     fi
 
     case "$1" in
-        init) cmd_init ${profile} ;;
-        snapshots) cmd_snapshots  ${profile} ;;
-        backup) cmd_backup  ${profile} ;;
-        clean) cmd_clean ${profile} ;;
-        size) cmd_size ${profile} ;;
+        init) cmd_init "${profile}" ;;
+        snapshots) cmd_snapshots "${profile}"  ;;
+        unlock) cmd_passthrough "${profile}" "${1}" ;;
+        backup) cmd_backup  "${profile}" ;;
+        clean) cmd_clean "${profile}" ;;
+        size) cmd_size "${profile}" ;;
     esac
 
 }
